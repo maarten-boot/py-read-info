@@ -223,13 +223,7 @@ class TokenStreamerFromFile:
                         )
 
                     next_token = next(iterator)
-                    if next_token[0] not in ["'", '"']:
-                        # no string merge
-                        raise Exception(
-                            f"{ll} we expext a string before and after '\\'; {zz}"
-                        )
-
-                    if last[0] not in ["'", '"']:
+                    if next_token[0] not in ["'", '"'] or last[0] not in ["'", '"']:
                         raise Exception(
                             f"{ll} we expext a string before and after '\\'; {zz}"
                         )
@@ -240,11 +234,8 @@ class TokenStreamerFromFile:
                             + "we can only merge strings starting with "
                             + f"identical first character; {zz}"
                         )
-
-                    # print(f"we have: {last}, {next_token}")
-                    last = (
-                        last[:-1] + next_token[1:]
-                    )  # we may have multiple continuation lines
+                    # we may have multiple continuation lines so hang on to the new last
+                    last = last[:-1] + next_token[1:]
                     continue
 
                 except StopIteration:
@@ -343,6 +334,7 @@ class TokenStreamerFromFile:
                 yield token
 
     def prep(self) -> Generator[str, None, None]:
+        # possibly later allow for dynamic filters
         i0 = self.read_tokens_raw()
         i1 = self.do_line_continue_and_merge_strings(i0)
         i2 = self._optimize_stream_br_close_before(i1)
@@ -366,7 +358,14 @@ def setup():
         filename=f"{prog}.log",
         encoding="utf-8",
         level=logging.DEBUG,
-        format="%(asctime)s %(levelname)s %(filename)s:%(lineno)s:%(funcName)s %(message)s",
+        format=" ".join(
+            [
+                "%(asctime)s",
+                "%(levelname)s",
+                "%(filename)s:%(lineno)s:%(funcName)s",
+                "%(message)s",
+            ]
+        ),
     )
     logger.info("Started")
 
