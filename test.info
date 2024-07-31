@@ -1,0 +1,12 @@
+aaa
+{
+    #include "bbb.info"
+
+    "key" "val1" \
+    "val2"
+
+    "key3" "val4" \ ; with comment
+    "val5"
+
+    "aa'\'\t\" " ; some escape seq: 0 a b f n r v " ' \ (10)
+}
