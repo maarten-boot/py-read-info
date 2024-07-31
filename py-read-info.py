@@ -197,7 +197,6 @@ class TokenStreamerFromFile:
     ) -> Generator[str, None, None]:
         last = None
         for token in iterator:
-            # print(f"token: {token}")
             if token[0] not in ["'", '"'] and token != "\\":
                 if last is not None:
                     yield last  # we are not merging so emit the string
@@ -209,7 +208,6 @@ class TokenStreamerFromFile:
                 if last:
                     yield last
                 last = token  # store the last string
-                # print(f"store: {last}")
             else:
                 ll = "Error: line continuation:"
                 zz = f"{self.line_nr}, {self.line}"
@@ -244,8 +242,9 @@ class TokenStreamerFromFile:
                         )
 
                     # print(f"we have: {last}, {next_token}")
-                    yield last[:-1] + next_token[1:]
-                    last = None
+                    last = (
+                        last[:-1] + next_token[1:]
+                    )  # we may have multiple continuation lines
                     continue
 
                 except StopIteration:

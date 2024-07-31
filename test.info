@@ -1,12 +1,15 @@
-aaa
+; A comment
+key1 value1   ; Another comment
+key2 "value with special characters in it {};#\n\t\"\0"
 {
-    #include "bbb.info"
-
-    "key" "val1" \
-    "val2"
-
-    "key3" "val4" \ ; with comment
-    "val5"
-
-    "aa'\'\t\" " ; some escape seq: 0 a b f n r v " ' \ (10)
+   subkey "value split "\
+          "over three"\
+          "lines"
+   {
+      a_key_without_value ""
+      "a key with special characters in it {};#\n\t\"\0" ""
+      "" value    ; Empty key with a value
+      "" ""       ; Empty key with empty value!
+   }
 }
+#include "bbb.info"    ; included file
