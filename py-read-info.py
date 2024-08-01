@@ -2,8 +2,10 @@ from typing import (
     Generator,
     Tuple,
     List,
+    Dict,
     Callable,
     Iterator,
+    Any,
 )
 
 import os
@@ -17,7 +19,7 @@ FILE = "test.info"
 logger = logging.getLogger()
 
 
-class MyLine:
+class InfoLine:
     def __init__(
         self,
         filename: str,
@@ -29,7 +31,7 @@ class MyLine:
         self.line = line
 
 
-class TokenType(Enum):
+class InfoTokenType(Enum):
     NONE = 0
     STRING = 1
     WORD = 2
@@ -39,12 +41,12 @@ class TokenType(Enum):
     LINE_END = 6
 
 
-class MyToken:
+class InfoToken:
     def __init__(
         self,
-        line: MyLine,
+        line: InfoLine,
         string: str,
-        t_type: TokenType,
+        t_type: InfoTokenType,
         start: int,
     ):
         self.line = line
@@ -54,7 +56,7 @@ class MyToken:
         self.start = start
 
 
-class TokenStreamerFromFile:
+class InfoTokenStreamerFromFile:
     escapes = {
         "0": "\0",
         "a": "\a",
@@ -78,9 +80,9 @@ class TokenStreamerFromFile:
         self.line_nr = 0
         self.stack: List[Callable] = []
         self.realpath = os.path.realpath(filename)
-        self.myLine: MyLine | None = None
+        self.myLine: InfoLine | None = None
 
-    def read_file(self) -> Generator[MyLine, None, None]:
+    def read_file(self) -> Generator[InfoLine, None, None]:
         for self.line in self.file_iterator:
             self.line_nr += 1
             self.line = self.line.strip()
@@ -93,10 +95,10 @@ class TokenStreamerFromFile:
             ):  # currently no recursive include myself test
                 # DOTO: if the realpath of the file to include is myself abort
                 include = self.line.split()[1].strip('"')
-                tsff = TokenStreamerFromFile(include)
+                tsff = InfoTokenStreamerFromFile(include)
                 yield from tsff.read_file()
             else:
-                yield MyLine(
+                yield InfoLine(
                     filename=self.filename, line_nr=self.line_nr, line=self.line
                 )
 
@@ -370,11 +372,122 @@ def setup():
     logger.info("Started")
 
 
+class InfoParser:
+    def __init__(self, streamer: InfoTokenStreamerFromFile) -> None:
+        self.streamer = streamer
+        self.stream = iter(self.streamer.stream())
+        self.data: Dict[str, Any] = {}
+
+    def do_lines(self, where: Dict[str, Any]) -> None:
+        """
+        ## 5 types of lines:
+         - key nl
+         - key value nl
+         - key value { nl
+         - key { nl
+         - } nl
+        """
+        zz = "Fatal: unexpected data after"
+        x = "{"
+        while True:
+            try:
+                what = next(self.stream)
+
+                if what != "}":
+                    # expect: key
+                    key = what
+                    value = None
+
+                    what = next(self.stream)
+                    # print("possible value", what)
+                    # expect: nl, { , value
+
+                    # we have nl
+                    if what == "\n":
+                        if key in where:
+                            print("1", where[key], value)
+
+                        where[key] = value
+                        continue
+
+                    # we have {
+                    if what == "{":
+                        what = next(self.stream)
+                        # expect: nl
+                        if what != "\n":
+                            raise Exception(
+                                f"{zz} '{x}', we expect 'newline', we got {what}"
+                            )
+
+                        if key not in where:
+                            where[key] = {}
+                        self.do_lines(where[key])
+                        continue
+
+                    # we have a value
+                    value = what
+
+                    what = next(self.stream)
+                    # expect: nl, {
+                    if what not in ["{", "\n"]:
+                        raise Exception(
+                            f"{zz} 'key' 'value', we expect 'newline' or '{x}', we got {what}"
+                        )
+
+                    if what == "\n":
+                        if key in where:  # duplicate key
+                            print("2", where[key], value)
+                            if isinstance(where[key], list):
+                                where[key].append(value)
+                                continue
+                            else:
+                                val = where[key]
+                                where[key] = []
+                                where[key].append(val)
+                                where[key].append(value)
+                                continue
+                        where[key] = value
+                        continue
+
+                    # we have {
+                    what = next(self.stream)
+                    # expect: nl
+                    if what != "\n":
+                        raise Exception(
+                            f"{zz} '{x}, we expect 'newline', we got {what}"
+                        )
+
+                    if key not in where:
+                        where[key] = {}
+                    if value not in where[key]:
+                        where[key][value] = {}
+                    self.do_lines(where[key][value])
+                    continue
+                else:
+                    # we have }
+                    # group is complete
+
+                    what = next(self.stream)
+                    # expect: nl
+                    if what != "\n":
+                        raise Exception(
+                            f"{zz} '{x}, we expect 'newline', we got {what}"
+                        )
+                    return
+            except StopIteration:
+                return  # but perhaps we are not yet complete
+
+    def process(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        self.do_lines(result)
+        return result
+
+
 def main():
     setup()
-    tsff = TokenStreamerFromFile(FILE)
-    for token in tsff.stream():
-        print(f"{token}", end="")
+    itsff = InfoTokenStreamerFromFile(FILE)
+    ip = InfoParser(streamer=itsff)
+    print(ip.process())
 
 
 main()

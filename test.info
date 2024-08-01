@@ -7,9 +7,12 @@ key2 "value with special characters in it {};#\n\t\"\0"
           "lines"
    {
       a_key_without_value ""
+      a_key_without_value2
       "a key with special characters in it {};#\n\t\"\0" ""
       "" value    ; Empty key with a value
       "" ""       ; Empty key with empty value!
    }
 }
-#include "bbb.info"    ; included file
+;yum {
+   #include "bbb.info"    ; included file
+;}
