@@ -1,9 +1,7 @@
 from typing import (
     Generator,
     Tuple,
-    # List,
     Dict,
-    # Callable,
     Iterator,
     Any,
 )
@@ -18,7 +16,7 @@ from dataclasses import dataclass
 
 import yaml
 
-FILE = "test.info"
+MAX_INCLUDE_DEPTH: int = 100
 
 logger = logging.getLogger()
 
@@ -63,16 +61,23 @@ class InfoTokenStreamerFromFile:  # pylint: disable=R0902 ; too_many_instance_at
         "\\": "\\",
     }
 
-    def __init__(self, filename: str) -> None:
+    def __init__(
+        self,
+        *,
+        filename: str,
+        include_depth: int = 0,
+    ) -> None:
         self.filename = filename
         self.f = open(filename, "r", encoding="utf-8")  # pylint: disable=R1732
         self.file_iterator = iter(self.f)
         self.comment_start = ";"
         self.line: str | None = None
         self.line_nr = 0
-        # self.stack: List[Callable] = []
         self.realpath = os.path.realpath(filename)
         self.my_line: InfoLine | None = None
+        self.include_depth = include_depth
+        if include_depth > MAX_INCLUDE_DEPTH:
+            raise Exception(f"Fatal: too many levels of include: {include_depth}")
 
     def read_file(self) -> Generator[InfoLine, None, None]:
         for self.line in self.file_iterator:
@@ -83,14 +88,20 @@ class InfoTokenStreamerFromFile:  # pylint: disable=R0902 ; too_many_instance_at
                 continue
 
             if self.line.startswith("#include"):  # currently no recursive include myself test
-                # DOTO: if the realpath of the file to include is myself abort
                 include = self.line.split()[1].strip('"')
-                tsff = InfoTokenStreamerFromFile(include)
+                if os.path.realpath(include) == self.realpath:
+                    raise Exception(f"Fatal: include cannot refer to the current file; {include} == {self.realpath}")
+
+                tsff = InfoTokenStreamerFromFile(filename=include, include_depth=self.include_depth + 1)
                 yield from tsff.read_file()
             else:
                 yield InfoLine(filename=self.filename, line_nr=self.line_nr, line=self.line)
 
-    def string_reader(self, line: str, what: str) -> Tuple[str, str]:
+    def string_reader(
+        self,
+        line: str,
+        what: str,
+    ) -> Tuple[str, str]:
         """read a string starting with a quote char specified in :what
         (single quote or doulbe quote)
 
@@ -387,17 +398,28 @@ def setup() -> None:
 
 
 class InfoParser:
-    def __init__(self, streamer: InfoTokenStreamerFromFile) -> None:
+    def __init__(
+        self,
+        *,
+        streamer: InfoTokenStreamerFromFile,
+    ) -> None:
         self.streamer = streamer
         self.stream = iter(self.streamer.stream())
         self.data: Dict[str, Any] = {}
 
-    def expect_newline(self, what: InfoToken, x: str) -> None:
+    def expect_newline(
+        self,
+        what: InfoToken,
+        x: str,
+    ) -> None:
         zz = "Fatal: unexpected data after"
         if what.string != "\n":
             raise Exception(f"{zz} '{x}', we expect 'newline', we got {what.string}")
 
-    def do_lines(self, where: Dict[str, Any]) -> None:  # pylint: disable=R0912; Too many branches
+    def do_lines(  # pylint: disable=R0912; Too many branches
+        self,
+        where: Dict[str, Any],
+    ) -> None:
         """
         ## 5 types of lines:
          - key nl
@@ -412,75 +434,78 @@ class InfoParser:
             try:
                 what = next(self.stream)
 
-                if what.string != "}":
-                    # expect: key
-                    key = what
-
+                if what.string == "}":
+                    # we have }, group is complete
                     what = next(self.stream)
-                    # expect: nl, { , value
+                    self.expect_newline(what, "}")
+                    return
 
-                    # we have nl
-                    if what.string == "\n":
-                        where[key.string] = None
-                        continue
+                # expect: key
+                key = what
 
-                    # we have {
-                    if what.string == "{":
-                        what = next(self.stream)
-                        self.expect_newline(what, "{")
+                what = next(self.stream)
+                # expect: nl, { , value
 
-                        if key.string not in where:
-                            where[key.string] = {}
-                        self.do_lines(where[key.string])
-                        continue
+                # we have nl, we can store the key -> value and go for the next line
+                if what.string == "\n":
+                    where[key.string] = None
+                    continue
 
-                    # we have a value
-                    value = what
-
-                    what = next(self.stream)
-                    # expect: nl, {
-                    if what.string not in ["{", "\n"]:
-                        raise Exception(
-                            ",".join(
-                                [
-                                    f"{zz} 'key' 'value'",
-                                    f" we expect 'newline' or '{x}'",
-                                    f" we got {what.string}",
-                                ]
-                            )
-                        )
-
-                    if what.string == "\n":
-                        if key.string in where:  # duplicate key
-                            if isinstance(where[key.string], list):
-                                where[key.string].append(value.string)
-                            else:
-                                val = where[key.string]
-                                where[key.string] = []
-                                where[key.string].append(val)
-                                where[key.string].append(value.string)
-                            continue
-
-                        where[key.string] = value.string
-                        continue
-
-                    # we have {
+                # we have {, we can start a new group
+                if what.string == "{":
                     what = next(self.stream)
                     self.expect_newline(what, "{")
 
                     if key.string not in where:
                         where[key.string] = {}
-                    if value.string not in where[key.string]:
-                        where[key.string][value.string] = {}
-                    self.do_lines(where[key.string][value.string])
-                    # continue
-                else:
-                    # we have }
-                    # group is complete
+                    self.do_lines(where[key.string])
+                    continue
 
-                    what = next(self.stream)
-                    self.expect_newline(what, "}")
-                    return
+                # we have a value
+                value = what
+
+                what = next(self.stream)
+                # expect: nl, {
+                if what.string not in ["{", "\n"]:
+                    raise Exception(
+                        ",".join(
+                            [
+                                f"{zz} 'key' 'value'",
+                                f" we expect 'newline' or '{x}'",
+                                f" we got {what.string}",
+                            ]
+                        )
+                    )
+
+                if what.string == "\n":
+                    if key.string in where:  # duplicate key
+                        if where[key.string] == value.string:
+                            # we have a duplicate record so no need to store
+                            # DOTO: if the 2 values are of the same scalar type
+                            continue
+
+                        if isinstance(where[key.string], list):
+                            if value.string not in where[key.string]:
+                                where[key.string].append(value.string)
+                        else:  # change to list and append
+                            val = where[key.string]
+                            where[key.string] = [val]
+                            where[key.string].append(value.string)
+                        continue
+
+                    where[key.string] = value.string
+                    continue
+
+                # we have {
+                what = next(self.stream)
+                self.expect_newline(what, "{")
+
+                if key.string not in where:
+                    where[key.string] = {}
+                if value.string not in where[key.string]:
+                    where[key.string][value.string] = {}
+                self.do_lines(where[key.string][value.string])
+
             except StopIteration:
                 return  # but perhaps we are not yet complete
 
@@ -501,8 +526,10 @@ class MyDumper(yaml.Dumper):  # pylint: disable=R0901; Too many ancestors
 
 def main() -> None:
     setup()
-    itsff = InfoTokenStreamerFromFile(FILE)
+
+    itsff = InfoTokenStreamerFromFile(filename=sys.argv[1])
     ip = InfoParser(streamer=itsff)
+
     r = ip.process()
     s = yaml.dump(
         r,

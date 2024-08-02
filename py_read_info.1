@@ -1,0 +1,16 @@
+key1: value1
+key2:
+  ? "\"value with special characters in it {};#\n\t\"\0\""
+  : subkey:
+      '"value split over threelines"':
+        '""':
+          - value
+          - '""'
+        ? "\"a key with special characters in it {};#\n\t\"\0\""
+        : '""'
+        a_key_without_value: '""'
+        a_key_without_value2: null
+  key3:
+    value3:
+      key4: '"value4 with spaces"'
+  key5: value5

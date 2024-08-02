@@ -1,7 +1,8 @@
-
+# makefile tab=tab
 PL_LINTERS	:=	eradicate,mccabe,pycodestyle,pyflakes,pylint
-IGNORE_LIST := E203,E226,C901,C0116,C0115,C0114,W0719
-LINE_LENGTH = 120
+IGNORE_LIST	:=	E203,E226,C901,C0116,C0115,C0114,W0719
+LINE_LENGTH	:=	120
+TEST_FILE	:=	test.info
 
 all: clean prep test
 
@@ -27,7 +28,9 @@ mypy:
 	mypy \
 		--strict \
 		--no-incremental \
-	*.py
+		*.py
 
-test:
-	python3 py_read_info.py
+test:py_read_info
+
+py_read_info:
+	python3 $@.py $(TEST_FILE) 2>$@.2 | tee $@.1
