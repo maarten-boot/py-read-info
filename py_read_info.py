@@ -1,9 +1,9 @@
 from typing import (
     Generator,
     Tuple,
-    List,
+    # List,
     Dict,
-    Callable,
+    # Callable,
     Iterator,
     Any,
 )
@@ -12,7 +12,10 @@ import os
 import sys
 import re
 import logging
+
 from enum import Enum
+from dataclasses import dataclass
+
 import yaml
 
 FILE = "test.info"
@@ -20,16 +23,11 @@ FILE = "test.info"
 logger = logging.getLogger()
 
 
+@dataclass
 class InfoLine:
-    def __init__(
-        self,
-        filename: str,
-        line: str,
-        line_nr: int,
-    ):
-        self.filename = filename
-        self.line_nr = line_nr
-        self.line = line
+    filename: str
+    line: str
+    line_nr: int
 
 
 class InfoTokenType(Enum):
@@ -42,22 +40,15 @@ class InfoTokenType(Enum):
     LINE_END = 6
 
 
+@dataclass
 class InfoToken:
-    def __init__(
-        self,
-        line: InfoLine,
-        string: str,
-        t_type: InfoTokenType,
-        start: int,
-    ):
-        self.line = line
-        self.string = string
-        self.string = string
-        self.t_type = t_type
-        self.start = start
+    line: InfoLine
+    string: str
+    t_type: InfoTokenType
+    begin: int
 
 
-class InfoTokenStreamerFromFile:
+class InfoTokenStreamerFromFile:  # pylint: disable=R0902 ; too_many_instance_attributes
     escapes = {
         "0": "\0",
         "a": "\a",
@@ -74,14 +65,14 @@ class InfoTokenStreamerFromFile:
 
     def __init__(self, filename: str) -> None:
         self.filename = filename
-        self.f = open(filename, "r", encoding="utf-8")
+        self.f = open(filename, "r", encoding="utf-8")  # pylint: disable=R1732
         self.file_iterator = iter(self.f)
         self.comment_start = ";"
         self.line: str | None = None
         self.line_nr = 0
-        self.stack: List[Callable] = []
+        # self.stack: List[Callable] = []
         self.realpath = os.path.realpath(filename)
-        self.myLine: InfoLine | None = None
+        self.my_line: InfoLine | None = None
 
     def read_file(self) -> Generator[InfoLine, None, None]:
         for self.line in self.file_iterator:
@@ -91,17 +82,13 @@ class InfoTokenStreamerFromFile:
             if len(self.line) == 0 or self.line[0] == self.comment_start:
                 continue
 
-            if self.line.startswith(
-                "#include"
-            ):  # currently no recursive include myself test
+            if self.line.startswith("#include"):  # currently no recursive include myself test
                 # DOTO: if the realpath of the file to include is myself abort
                 include = self.line.split()[1].strip('"')
                 tsff = InfoTokenStreamerFromFile(include)
                 yield from tsff.read_file()
             else:
-                yield InfoLine(
-                    filename=self.filename, line_nr=self.line_nr, line=self.line
-                )
+                yield InfoLine(filename=self.filename, line_nr=self.line_nr, line=self.line)
 
     def string_reader(self, line: str, what: str) -> Tuple[str, str]:
         """read a string starting with a quote char specified in :what
@@ -129,9 +116,7 @@ class InfoTokenStreamerFromFile:
 
             if line[current] == "\\":  # we see a escape char in the string
                 if line[current + 1] not in self.escapes:
-                    raise Exception(
-                        f"Error: unknown escape in string: {line[current:current+1]}"
-                    )
+                    raise Exception(f"Error: unknown escape in string: {line[current:current+1]}")
                 current += 1
                 length += 1
                 result += self.escapes[line[current]]
@@ -147,10 +132,11 @@ class InfoTokenStreamerFromFile:
 
         return line, ""
 
-    def read_tokens_raw(self) -> Generator[str, None, None]:
+    def read_tokens_raw(self) -> Generator[InfoToken, None, None]:
         iterator = iter(self.read_file())
-        for self.myLine in iterator:
-            self.line = self.myLine.line.strip()
+        for self.my_line in iterator:
+            assert self.my_line is not None
+            self.line = self.my_line.line.strip()
             while len(self.line) > 0:
                 self.line = self.line.strip()
                 if self.line[0] == self.comment_start:
@@ -160,25 +146,45 @@ class InfoTokenStreamerFromFile:
                     self.line, string = self.string_reader(self.line, self.line[0])
                     token = string
                     self.line = self.line.strip()
-                    yield token
+                    yield InfoToken(
+                        line=self.my_line,
+                        string=token,
+                        t_type=InfoTokenType.STRING,
+                        begin=0,
+                    )
                     continue
 
                 if self.line[0] == "{":
                     token = self.line[0]
                     self.line = self.line[len(token) :].strip()
-                    yield token
+                    yield InfoToken(
+                        line=self.my_line,
+                        string=token,
+                        t_type=InfoTokenType.GROUP_START,
+                        begin=0,
+                    )
                     continue
 
                 if self.line[0] == "}":
                     token = self.line[0]
                     self.line = self.line[len(token) :].strip()
-                    yield token
+                    yield InfoToken(
+                        line=self.my_line,
+                        string=token,
+                        t_type=InfoTokenType.GROUP_END,
+                        begin=0,
+                    )
                     continue
 
                 if self.line[0] == "\\":
                     token = self.line[0]
                     self.line = self.line[len(token) :].strip()
-                    yield token
+                    yield InfoToken(
+                        line=self.my_line,
+                        string=token,
+                        t_type=InfoTokenType.LINE_CONTINUE,
+                        begin=0,
+                    )
                     continue
 
                 # read a token from the beginning of the self.line
@@ -187,27 +193,27 @@ class InfoTokenStreamerFromFile:
                 if match:
                     token = match.group(0)
                     self.line = self.line[len(token) :].strip()
-                    yield token
+                    yield InfoToken(line=self.my_line, string=token, t_type=InfoTokenType.WORD, begin=0)
                     continue
 
-                print("NO_MATCH", len(self.line), self.line)
+                raise Exception(f"Fatal: unexpected data in line: {self.line_nr}: {self.line}")
 
-            yield "\n"
+            yield InfoToken(line=self.my_line, string="\n", t_type=InfoTokenType.LINE_END, begin=0)
 
     def do_line_continue_and_merge_strings(
         self,
-        iterator: Iterator[str],
-    ) -> Generator[str, None, None]:
+        iterator: Iterator[InfoToken],
+    ) -> Generator[InfoToken, None, None]:
         last = None
         for token in iterator:
-            if token[0] not in ["'", '"'] and token != "\\":
+            if token.string[0] not in ["'", '"'] and token.string != "\\":
                 if last is not None:
                     yield last  # we are not merging so emit the string
                     last = None
                 yield token
                 continue
 
-            if token != "\\":
+            if token.string != "\\":
                 if last:
                     yield last
                 last = token  # store the last string
@@ -220,25 +226,21 @@ class InfoTokenStreamerFromFile:
 
                 try:
                     next_token = next(iterator)
-                    if next_token != "\n":
-                        raise Exception(
-                            f"{ll} a '\\' only directly before newline; {zz}, {next_token}"
-                        )
+                    if next_token.string != "\n":
+                        raise Exception(f"{ll} a '\\' only directly before newline; {zz}, {next_token.string}")
 
                     next_token = next(iterator)
-                    if next_token[0] not in ["'", '"'] or last[0] not in ["'", '"']:
-                        raise Exception(
-                            f"{ll} we expext a string before and after '\\'; {zz}"
-                        )
+                    if next_token.string[0] not in ["'", '"'] or last.string[0] not in ["'", '"']:
+                        raise Exception(f"{ll} we expext a string before and after '\\'; {zz}")
 
-                    if last[0] != next_token[0]:
+                    if last.string[0] != next_token.string[0]:
                         raise Exception(
                             "Error: string merge: "
                             + "we can only merge strings starting with "
                             + f"identical first character; {zz}"
                         )
                     # we may have multiple continuation lines so hang on to the new last
-                    last = last[:-1] + next_token[1:]
+                    last.string = last.string[:-1] + next_token.string[1:]
                     continue
 
                 except StopIteration:
@@ -246,30 +248,35 @@ class InfoTokenStreamerFromFile:
 
     def _optimize_stream_br_close_before(
         self,
-        iterator: Iterator[str],
-    ) -> Generator[str, None, None]:
+        iterator: Iterator[InfoToken],
+    ) -> Generator[InfoToken, None, None]:
         last = None
         for token in iterator:
-            if token == "}":
-                if last != "\n":
-                    yield "\n"
+            assert self.my_line is not None
+
+            if token.string == "}":
+                assert last is not None
+                if last.string != "\n":
+                    yield InfoToken(line=self.my_line, string="\n", t_type=InfoTokenType.LINE_END, begin=0)
             yield token
             last = token
 
     def _optimize_stream_br_open1(
         self,
-        iterator: Iterator[str],
-    ) -> Generator[str, None, None]:
+        iterator: Iterator[InfoToken],
+    ) -> Generator[InfoToken, None, None]:
         for token in iterator:
-            if token != "{":
+            assert self.my_line is not None
+
+            if token.string != "{":
                 yield token
                 continue
 
             try:
                 next_token = next(iterator)
-                if next_token != "\n":
+                if next_token.string != "\n":
                     yield token
-                    yield "\n"
+                    yield InfoToken(line=self.my_line, string="\n", t_type=InfoTokenType.LINE_END, begin=0)
                     yield next_token
                 else:
                     yield token
@@ -279,13 +286,15 @@ class InfoTokenStreamerFromFile:
 
     def _optimize_stream_br_open2(
         self,
-        iterator: Iterator[str],
-    ) -> Generator[str, None, None]:
+        iterator: Iterator[InfoToken],
+    ) -> Generator[InfoToken, None, None]:
         for token in iterator:
-            if token == "\n":
+            assert self.my_line is not None
+
+            if token.string == "\n":
                 try:
                     next_token = next(iterator)
-                    if next_token == "{":
+                    if next_token.string == "{":
                         yield next_token
                     else:
                         yield token
@@ -297,15 +306,17 @@ class InfoTokenStreamerFromFile:
 
     def _optimize_stream_br_close(
         self,
-        iterator: Iterator[str],
-    ) -> Generator[str, None, None]:
+        iterator: Iterator[InfoToken],
+    ) -> Generator[InfoToken, None, None]:
         for token in iterator:
-            if token == "}":
+            assert self.my_line is not None
+
+            if token.string == "}":
                 try:
                     next_token = next(iterator)
-                    if next_token != "\n":
+                    if next_token.string != "\n":
                         yield token
-                        yield "\n"
+                        yield InfoToken(line=self.my_line, string="\n", t_type=InfoTokenType.LINE_END, begin=0)
                         yield next_token
                     else:
                         yield token
@@ -317,16 +328,18 @@ class InfoTokenStreamerFromFile:
 
     def _optimize_stream_br_close2(
         self,
-        iterator: Iterator[str],
-    ) -> Generator[str, None, None]:
+        iterator: Iterator[InfoToken],
+    ) -> Generator[InfoToken, None, None]:
         """if we see multiple }}}}, we need a second step to remove the odd }"""
         for token in iterator:
-            if token == "}":
+            assert self.my_line is not None
+
+            if token.string == "}":
                 try:
                     next_token = next(iterator)
-                    if next_token != "\n":
+                    if next_token.string != "\n":
                         yield token
-                        yield "\n"
+                        yield InfoToken(line=self.my_line, string="\n", t_type=InfoTokenType.LINE_END, begin=0)
                         yield next_token
                     else:
                         yield token
@@ -336,7 +349,7 @@ class InfoTokenStreamerFromFile:
             else:
                 yield token
 
-    def prep(self) -> Generator[str, None, None]:
+    def prep(self) -> Generator[InfoToken, None, None]:
         # possibly later allow for dynamic filters
         i0 = self.read_tokens_raw()
         i1 = self.do_line_continue_and_merge_strings(i0)
@@ -347,12 +360,12 @@ class InfoTokenStreamerFromFile:
         i6 = self._optimize_stream_br_close2(i5)
         return i6
 
-    def stream(self) -> Generator[str, None, None]:
+    def stream(self) -> Generator[InfoToken, None, None]:
         for token in self.prep():
             yield token
 
 
-def setup():
+def setup() -> None:
     prog = os.path.basename(sys.argv[0])
     if prog.lower().endswith(".py"):
         prog = prog[:-3]
@@ -379,12 +392,12 @@ class InfoParser:
         self.stream = iter(self.streamer.stream())
         self.data: Dict[str, Any] = {}
 
-    def expect_newline(self, what: str, x: str) -> None:
+    def expect_newline(self, what: InfoToken, x: str) -> None:
         zz = "Fatal: unexpected data after"
-        if what != "\n":
-            raise Exception(f"{zz} '{x}', we expect 'newline', we got {what}")
+        if what.string != "\n":
+            raise Exception(f"{zz} '{x}', we expect 'newline', we got {what.string}")
 
-    def do_lines(self, where: Dict[str, Any]) -> None:
+    def do_lines(self, where: Dict[str, Any]) -> None:  # pylint: disable=R0912; Too many branches
         """
         ## 5 types of lines:
          - key nl
@@ -395,31 +408,30 @@ class InfoParser:
         """
         zz = "Fatal: unexpected data after"
         x = "{"
-        while True:
+        while True:  # pylint:: disable=R1702; Too many nested blocks
             try:
                 what = next(self.stream)
 
-                if what != "}":
+                if what.string != "}":
                     # expect: key
                     key = what
-                    value = None
 
                     what = next(self.stream)
                     # expect: nl, { , value
 
                     # we have nl
-                    if what == "\n":
-                        where[key] = value
+                    if what.string == "\n":
+                        where[key.string] = None
                         continue
 
                     # we have {
-                    if what == "{":
+                    if what.string == "{":
                         what = next(self.stream)
                         self.expect_newline(what, "{")
 
-                        if key not in where:
-                            where[key] = {}
-                        self.do_lines(where[key])
+                        if key.string not in where:
+                            where[key.string] = {}
+                        self.do_lines(where[key.string])
                         continue
 
                     # we have a value
@@ -427,35 +439,41 @@ class InfoParser:
 
                     what = next(self.stream)
                     # expect: nl, {
-                    if what not in ["{", "\n"]:
+                    if what.string not in ["{", "\n"]:
                         raise Exception(
-                            f"{zz} 'key' 'value', we expect 'newline' or '{x}', we got {what}"
+                            ",".join(
+                                [
+                                    f"{zz} 'key' 'value'",
+                                    f" we expect 'newline' or '{x}'",
+                                    f" we got {what.string}",
+                                ]
+                            )
                         )
 
-                    if what == "\n":
-                        if key in where:  # duplicate key
-                            if isinstance(where[key], list):
-                                where[key].append(value)
+                    if what.string == "\n":
+                        if key.string in where:  # duplicate key
+                            if isinstance(where[key.string], list):
+                                where[key.string].append(value.string)
                             else:
-                                val = where[key]
-                                where[key] = []
-                                where[key].append(val)
-                                where[key].append(value)
+                                val = where[key.string]
+                                where[key.string] = []
+                                where[key.string].append(val)
+                                where[key.string].append(value.string)
                             continue
 
-                        where[key] = value
+                        where[key.string] = value.string
                         continue
 
                     # we have {
                     what = next(self.stream)
                     self.expect_newline(what, "{")
 
-                    if key not in where:
-                        where[key] = {}
-                    if value not in where[key]:
-                        where[key][value] = {}
-                    self.do_lines(where[key][value])
-                    continue
+                    if key.string not in where:
+                        where[key.string] = {}
+                    if value.string not in where[key.string]:
+                        where[key.string][value.string] = {}
+                    self.do_lines(where[key.string][value.string])
+                    # continue
                 else:
                     # we have }
                     # group is complete
@@ -472,12 +490,16 @@ class InfoParser:
         return result
 
 
-class MyDumper(yaml.Dumper):
-    def increase_indent(self, flow=False, indentless=False):
-        return super(MyDumper, self).increase_indent(flow, False)
+class MyDumper(yaml.Dumper):  # pylint: disable=R0901; Too many ancestors
+    def increase_indent(
+        self,
+        flow: bool = False,
+        indentless: bool = False,
+    ) -> Any:
+        return super().increase_indent(flow, False)
 
 
-def main():
+def main() -> None:
     setup()
     itsff = InfoTokenStreamerFromFile(FILE)
     ip = InfoParser(streamer=itsff)

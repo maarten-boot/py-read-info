@@ -1,5 +1,7 @@
 
-IGNORE_LIST := E203,E226,C901
+PL_LINTERS	:=	eradicate,mccabe,pycodestyle,pyflakes,pylint
+IGNORE_LIST := E203,E226,C901,C0116,C0115,C0114,W0719
+LINE_LENGTH = 120
 
 all: clean prep test
 
@@ -10,13 +12,22 @@ clean:
 prep: black pylama mypy
 
 black:
-	black *.py
+	black \
+		--line-length $(LINE_LENGTH) \
+		*.py
 
 pylama:
-	pylama  --ignore $(IGNORE_LIST) *.py
+	pylama \
+		--max-line-length $(LINE_LENGTH) \
+		--linters $(PL_LINTERS) \
+		--ignore $(IGNORE_LIST) \
+		*.py
 
 mypy:
-	mypy *.py
+	mypy \
+		--strict \
+		--no-incremental \
+	*.py
 
 test:
-	python3 py-read-info.py
+	python3 py_read_info.py
