@@ -13,6 +13,7 @@ import sys
 import re
 import logging
 from enum import Enum
+import yaml
 
 FILE = "test.info"
 
@@ -378,6 +379,11 @@ class InfoParser:
         self.stream = iter(self.streamer.stream())
         self.data: Dict[str, Any] = {}
 
+    def expect_newline(self, what: str, x: str) -> None:
+        zz = "Fatal: unexpected data after"
+        if what != "\n":
+            raise Exception(f"{zz} '{x}', we expect 'newline', we got {what}")
+
     def do_lines(self, where: Dict[str, Any]) -> None:
         """
         ## 5 types of lines:
@@ -399,25 +405,17 @@ class InfoParser:
                     value = None
 
                     what = next(self.stream)
-                    # print("possible value", what)
                     # expect: nl, { , value
 
                     # we have nl
                     if what == "\n":
-                        if key in where:
-                            print("1", where[key], value)
-
                         where[key] = value
                         continue
 
                     # we have {
                     if what == "{":
                         what = next(self.stream)
-                        # expect: nl
-                        if what != "\n":
-                            raise Exception(
-                                f"{zz} '{x}', we expect 'newline', we got {what}"
-                            )
+                        self.expect_newline(what, "{")
 
                         if key not in where:
                             where[key] = {}
@@ -436,26 +434,21 @@ class InfoParser:
 
                     if what == "\n":
                         if key in where:  # duplicate key
-                            print("2", where[key], value)
                             if isinstance(where[key], list):
                                 where[key].append(value)
-                                continue
                             else:
                                 val = where[key]
                                 where[key] = []
                                 where[key].append(val)
                                 where[key].append(value)
-                                continue
+                            continue
+
                         where[key] = value
                         continue
 
                     # we have {
                     what = next(self.stream)
-                    # expect: nl
-                    if what != "\n":
-                        raise Exception(
-                            f"{zz} '{x}, we expect 'newline', we got {what}"
-                        )
+                    self.expect_newline(what, "{")
 
                     if key not in where:
                         where[key] = {}
@@ -468,11 +461,7 @@ class InfoParser:
                     # group is complete
 
                     what = next(self.stream)
-                    # expect: nl
-                    if what != "\n":
-                        raise Exception(
-                            f"{zz} '{x}, we expect 'newline', we got {what}"
-                        )
+                    self.expect_newline(what, "}")
                     return
             except StopIteration:
                 return  # but perhaps we are not yet complete
@@ -483,11 +472,22 @@ class InfoParser:
         return result
 
 
+class MyDumper(yaml.Dumper):
+    def increase_indent(self, flow=False, indentless=False):
+        return super(MyDumper, self).increase_indent(flow, False)
+
+
 def main():
     setup()
     itsff = InfoTokenStreamerFromFile(FILE)
     ip = InfoParser(streamer=itsff)
-    print(ip.process())
+    r = ip.process()
+    s = yaml.dump(
+        r,
+        Dumper=MyDumper,
+        default_flow_style=False,
+    )
+    print(s, end="")
 
 
 main()
