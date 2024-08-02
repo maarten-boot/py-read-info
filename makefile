@@ -9,6 +9,7 @@ all: clean prep test
 clean:
 	rm -f *.tmp *.log
 	rm -f 1 2 *.1 *.2
+	rm -rf ./tmp
 
 prep: black pylama mypy
 

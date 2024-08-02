@@ -166,3 +166,4 @@ cython_debug/
 *.2
 *.tmp
 *.log
+.env

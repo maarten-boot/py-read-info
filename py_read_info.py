@@ -76,8 +76,9 @@ class InfoTokenStreamerFromFile:  # pylint: disable=R0902 ; too_many_instance_at
         self.realpath = os.path.realpath(filename)
         self.my_line: InfoLine | None = None
         self.include_depth = include_depth
-        if include_depth > MAX_INCLUDE_DEPTH:
+        if self.include_depth > MAX_INCLUDE_DEPTH:
             raise Exception(f"Fatal: too many levels of include: {include_depth}")
+        logger.debug("read from file: %s, level %d", self.realpath, self.include_depth)
 
     def read_file(self) -> Generator[InfoLine, None, None]:
         for self.line in self.file_iterator:
@@ -87,15 +88,26 @@ class InfoTokenStreamerFromFile:  # pylint: disable=R0902 ; too_many_instance_at
             if len(self.line) == 0 or self.line[0] == self.comment_start:
                 continue
 
-            if self.line.startswith("#include"):  # currently no recursive include myself test
+            if self.line.startswith("#include"):
+                here = os.path.dirname(self.realpath)
+                # relative includes are relative to the current file
                 include = self.line.split()[1].strip('"')
+                if include[0] != "/":  # on unix
+                    include = here + "/" + include
                 if os.path.realpath(include) == self.realpath:
                     raise Exception(f"Fatal: include cannot refer to the current file; {include} == {self.realpath}")
 
-                tsff = InfoTokenStreamerFromFile(filename=include, include_depth=self.include_depth + 1)
+                tsff = InfoTokenStreamerFromFile(
+                    filename=include,
+                    include_depth=self.include_depth + 1,
+                )
                 yield from tsff.read_file()
             else:
-                yield InfoLine(filename=self.filename, line_nr=self.line_nr, line=self.line)
+                yield InfoLine(
+                    filename=self.filename,
+                    line_nr=self.line_nr,
+                    line=self.line,
+                )
 
     def string_reader(
         self,
@@ -394,7 +406,6 @@ def setup() -> None:
             ]
         ),
     )
-    logger.info("Started")
 
 
 class InfoParser:
