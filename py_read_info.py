@@ -27,6 +27,9 @@ class InfoLine:
     line: str
     line_nr: int
 
+    def __str__(self) -> str:
+        return f"file: '{self.filename}', line: {self.line_nr}:{self.line}"
+
 
 class InfoTokenType(Enum):
     NONE = 0
@@ -44,6 +47,9 @@ class InfoToken:
     string: str
     t_type: InfoTokenType
     begin: int
+
+    def __str__(self) -> str:
+        return f"token: '{self.string}' in line: {self.line}"
 
 
 class InfoTokenStreamerFromFile:  # pylint: disable=R0902 ; too_many_instance_attributes
@@ -139,7 +145,7 @@ class InfoTokenStreamerFromFile:  # pylint: disable=R0902 ; too_many_instance_at
 
             if line[current] == "\\":  # we see a escape char in the string
                 if line[current + 1] not in self.escapes:
-                    raise Exception(f"Error: unknown escape in string: {line[current:current+1]}")
+                    raise Exception(f"Error: unknown escape in string: {line[current:current+1]} in line: {line}")
                 current += 1
                 length += 1
                 result += self.escapes[line[current]]
@@ -388,26 +394,6 @@ class InfoTokenStreamerFromFile:  # pylint: disable=R0902 ; too_many_instance_at
             yield token
 
 
-def setup() -> None:
-    prog = os.path.basename(sys.argv[0])
-    if prog.lower().endswith(".py"):
-        prog = prog[:-3]
-
-    logging.basicConfig(
-        filename=f"{prog}.log",
-        encoding="utf-8",
-        level=logging.DEBUG,
-        format=" ".join(
-            [
-                "%(asctime)s",
-                "%(levelname)s",
-                "%(filename)s:%(lineno)s:%(funcName)s",
-                "%(message)s",
-            ]
-        ),
-    )
-
-
 class InfoParser:
     def __init__(
         self,
@@ -425,7 +411,7 @@ class InfoParser:
     ) -> None:
         zz = "Fatal: unexpected data after"
         if what.string != "\n":
-            raise Exception(f"{zz} '{x}', we expect 'newline', we got {what.string}")
+            raise Exception(f"{zz} '{x}', we expect 'newline', we got {what.string}; {what}")
 
     def do_lines(  # pylint: disable=R0912; Too many branches
         self,
@@ -484,6 +470,7 @@ class InfoParser:
                                 f"{zz} 'key' 'value'",
                                 f" we expect 'newline' or '{x}'",
                                 f" we got {what.string}",
+                                f"line: {what.line}",
                             ]
                         )
                     )
@@ -533,6 +520,26 @@ class MyDumper(yaml.Dumper):  # pylint: disable=R0901; Too many ancestors
         indentless: bool = False,
     ) -> Any:
         return super().increase_indent(flow, False)
+
+
+def setup() -> None:
+    prog = os.path.basename(sys.argv[0])
+    if prog.lower().endswith(".py"):
+        prog = prog[:-3]
+
+    logging.basicConfig(
+        filename=f"{prog}.log",
+        encoding="utf-8",
+        level=logging.DEBUG,
+        format=" ".join(
+            [
+                "%(asctime)s",
+                "%(levelname)s",
+                "%(filename)s:%(lineno)s:%(funcName)s",
+                "%(message)s",
+            ]
+        ),
+    )
 
 
 def main() -> None:

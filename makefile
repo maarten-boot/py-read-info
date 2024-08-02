@@ -35,3 +35,6 @@ test:py_read_info
 
 py_read_info:
 	python3 $@.py $(TEST_FILE) 2>$@.2 | tee $@.1
+
+t1: clean prep
+	bash t1.sh

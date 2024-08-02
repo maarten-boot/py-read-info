@@ -1,7 +1,9 @@
 #! /bin/bash
 
+TEMP_DIR="./tmp"
+
 source .env
-mkdir -p ./tmp
+mkdir -p ./${TEMP_DIR}/1
 
 find ${TEST_DIR} -type f -print |
 grep '.info$' |         # only info files
@@ -12,11 +14,11 @@ do
 
     zz=$(
         echo "$file" |
-        awk '
+        awk -v path="${TEST_DIR}" '
         {
-            sub(/.*\/RevLabs\/github.rl.lan\/mboot\/titanium_core\//, "", $0)
-            gsub(/\//, "_", $0)
-            print
+            rest = substr($0,length(path)+2)
+            gsub(/\//, "_", rest)
+            print rest
         }
         '
     )
@@ -24,12 +26,14 @@ do
     echo "### $file"
     echo "### $zz"
 
-    python3 ./py_read_info.py $file 2>./tmp/$zz.2 >./tmp/$zz.1
-    [ -s ./tmp/$zz.2 ] || {
-        rm -f ./tmp/$zz.2
+    python3 ./py_read_info.py $file 2>./${TEMP_DIR}/$zz.2 >./${TEMP_DIR}/$zz.1
+    [ -s ./${TEMP_DIR}/$zz.2 ] || {
+        rm -f ./${TEMP_DIR}/$zz.2
     }
-    [ -s ./tmp/$zz.1 ] || {
-        rm -f ./tmp/$zz.1
+    [ -s ./${TEMP_DIR}/$zz.1 ] || {
+        rm -f ./${TEMP_DIR}/$zz.1
+        continue
     }
+    mv ./${TEMP_DIR}/$zz.1 ./${TEMP_DIR}/1/
 
 done
