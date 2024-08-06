@@ -16,24 +16,24 @@ prep: black pylama mypy
 black:
 	black \
 		--line-length $(LINE_LENGTH) \
-		*.py
+		*.py py_read_info
 
 pylama:
 	pylama \
 		--max-line-length $(LINE_LENGTH) \
 		--linters $(PL_LINTERS) \
 		--ignore $(IGNORE_LIST) \
-		*.py
+		*.py py_read_info
 
 mypy:
 	mypy \
 		--strict \
 		--no-incremental \
-		*.py
+		*.py py_read_info
 
-test:py_read_info
+test: example_1
 
-py_read_info:
+example_1:
 	python3 $@.py $(TEST_FILE) 2>$@.2 | tee $@.1
 
 t1: clean prep
