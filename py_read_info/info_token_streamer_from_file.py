@@ -2,7 +2,6 @@ from typing import (
     Generator,
     Tuple,
     Iterator,
-    # Any,
 )
 
 import os

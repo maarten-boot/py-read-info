@@ -1,8 +1,5 @@
 from typing import (
-    # Generator,
-    # Tuple,
     Dict,
-    # Iterator,
     Any,
 )
 
@@ -10,8 +7,6 @@ import logging
 
 from .info_token_streamer_from_file import InfoTokenStreamerFromFile
 from .info_token import InfoToken
-
-MAX_INCLUDE_DEPTH: int = 100
 
 logger = logging.getLogger(__name__)
 

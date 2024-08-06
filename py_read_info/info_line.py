@@ -2,8 +2,6 @@ import logging
 
 from dataclasses import dataclass
 
-MAX_INCLUDE_DEPTH: int = 100
-
 logger = logging.getLogger(__name__)
 
 

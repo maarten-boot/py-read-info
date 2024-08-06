@@ -5,8 +5,6 @@ from dataclasses import dataclass
 
 from .info_line import InfoLine
 
-MAX_INCLUDE_DEPTH: int = 100
-
 logger = logging.getLogger(__name__)
 
 
